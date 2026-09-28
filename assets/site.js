@@ -6,7 +6,7 @@ const assetUrl=name=>new URL(`./assets/${name}`,location.href).href;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(url,text,primary=false,external=false)=>`<a class="btn${primary?' primary':''}" href="${url}"${external?' target="_blank" rel="noreferrer"':''}>${text}${external?' ↗':''}</a>`;
 const home=()=>`<div class="wrap">
-<section class="hero"><div class="hero-copy"><span class="eyebrow">ČESKÝ MINECRAFT JAVA SERVER</span><h1>Nubaria <span>ChillDark</span></h1><p class="lead">Survival Economy</p><div class="address"><code>${IP}</code><button class="copy" data-copy>Zkopírovat IP</button></div><div class="meta"><span class="status" data-status><i class="dot"></i><span data-status-text>Ověřuji stav serveru…</span></span></div><div class="actions">${btn('#pripojeni','Jak se připojit',true)}${btn(DISCORD,'Otevřít Discord',false,true)}</div></div><div class="scene"><img class="hero-logo" src="${assetUrl('nubaria-chilldark.png?v=0a7bd43')}" alt="Oficiální logo Nubaria ChillDark" width="512" height="512"></div></section>
+<section class="hero"><div class="hero-copy"><span class="eyebrow">ČESKÝ MINECRAFT JAVA SERVER</span><h1>Nubaria <span>ChillDark</span></h1><p class="lead">Survival Economy</p><div class="address"><code>${IP}</code><button class="copy" data-copy>Zkopírovat IP</button></div><div class="meta"><span class="status" data-status aria-live="polite"><i class="dot"></i><span data-status-text>Kontroluji stav…</span></span><button class="status-retry" data-refresh-status type="button">Zkontrolovat znovu</button></div><div class="actions">${btn('#pripojeni','Jak se připojit',true)}${btn(DISCORD,'Otevřít Discord',false,true)}</div></div><div class="scene"><img class="hero-logo" src="${assetUrl('nubaria-chilldark.png?v=0a7bd43')}" alt="Oficiální logo Nubaria ChillDark" width="512" height="512"></div></section>
 <section class="facts" aria-label="Další informace o serveru">${[['Kapacita','100 hráčů'],['Software','Paper'],['Whitelist','Ne'],['Cracked','Zeptej se na Discordu']].map(([a,b])=>`<div class="fact"><i class="mark"></i><div><span>${a}</span><b>${b}</b></div></div>`).join('')}</section>
 <section class="section" id="svet"><div class="section-head"><h2>Co najdeš na serveru</h2></div><div class="play">${[['Survival','Těž a stav.'],['Ekonomika','Hráčské obchody a aukce.'],['PvP','Aréna a PvP eventy.'],['Crates','Klíče za hlasování.']].map(([a,b],i)=>`<article class="activity"><span class="num">0${i+1}</span><h3>${a}</h3><p>${b}</p></article>`).join('')}</div></section>
 <section class="section" id="pripojeni"><div class="section-head"><h2>Jak se připojit</h2></div><div class="join"><ol class="steps"><li><span class="stepno">01</span><div><h3>Spusť Minecraft Java Edition</h3></div></li><li><span class="stepno">02</span><div><h3>Otevři Multiplayer → Add Server</h3></div></li><li><span class="stepno">03</span><div><h3>Zadej adresu serveru</h3><p><code>${IP}</code></p></div></li><li><span class="stepno">04</span><div><h3>Připoj se</h3></div></li></ol><aside class="join-panel"><p>IP SERVERU</p><div class="copy-ip"><code>${IP}</code><button class="copy" data-copy>Zkopírovat IP</button></div><p class="feedback" aria-live="polite"></p></aside></div></section>
@@ -23,6 +23,35 @@ const pages={'/':['Nubaria ChillDark | Český Survival Economy server',home],'/
 const [title,render]=pages[path]??pages['/'];document.title=title;main.innerHTML=render();
 const menu=document.querySelector('.menu'),nav=document.querySelector('#nav');menu.addEventListener('click',()=>{const open=menu.getAttribute('aria-expanded')!=='true';menu.setAttribute('aria-expanded',String(open));menu.setAttribute('aria-label',open?'Zavřít navigaci':'Otevřít navigaci');nav.classList.toggle('open',open)});nav.addEventListener('click',e=>{if(e.target.closest('a')){menu.setAttribute('aria-expanded','false');nav.classList.remove('open')}});
 document.querySelectorAll('[data-copy]').forEach(button=>{button.dataset.label=button.textContent.trim();button.addEventListener('click',async()=>{const feedback=document.querySelector('.feedback');try{await navigator.clipboard.writeText(IP);button.textContent='Zkopírováno';if(feedback)feedback.textContent='IP zkopírována'}catch{if(feedback)feedback.textContent=`Adresa serveru: ${IP}`;else button.textContent=IP}setTimeout(()=>button.textContent=button.dataset.label,2000)})});
-if(path==='/')fetch('https://api.mcsrvstat.us/3/mcnubaria.eu').then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{const s=document.querySelector('[data-status]'),t=document.querySelector('[data-status-text]'),online=data.online===true;s.classList.add(online?'online':'offline');t.textContent=online?`Online${data.players?.online!=null?` · ${data.players.online}/${data.players.max}`:''}`:'Momentálně offline'}).catch(()=>document.querySelector('[data-status-text]').textContent='Stav nedostupný');
+if(path==='/'){
+	const status=document.querySelector('[data-status]');
+	const statusText=document.querySelector('[data-status-text]');
+	const refreshStatus=document.querySelector('[data-refresh-status]');
+	const checkStatus=async()=>{
+		refreshStatus.disabled=true;
+		status.classList.remove('online','offline','unavailable');
+		statusText.textContent='Kontroluji stav…';
+		try{
+			const response=await fetch('https://api.mcsrvstat.us/3/mcnubaria.eu',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+			if(!response.ok)throw new Error(`Status API ${response.status}`);
+			const data=await response.json();
+			if(data.online===true){
+				status.classList.add('online');
+				statusText.textContent=`Online${data.players?.online!=null?` · ${data.players.online}/${data.players.max}`:''}`;
+			}else{
+				status.classList.add('offline');
+				const pingFailed=data.debug?.errors?.some(error=>error.type==='ping');
+				statusText.textContent=pingFailed?'Minecraft ping bez odpovědi':'Momentálně offline';
+			}
+		}catch{
+			status.classList.add('unavailable');
+			statusText.textContent='Stav nedostupný';
+		}finally{
+			refreshStatus.disabled=false;
+		}
+	};
+	refreshStatus.addEventListener('click',checkStatus);
+	checkStatus();
+}
 if(path==='/vip'){const loader=document.createElement('script');loader.src='https://vip.chost.cz/embed.js';loader.dataset.shop='s7b70d02fd64';loader.dataset.token='ba5d6d6484035d8225f706a1aeec88bb';loader.async=true;document.querySelector('.shop-frame').append(loader)}
 if(path==='/banlist'){const body=document.querySelector('[data-rows]'),search=document.querySelector('[data-search]'),count=document.querySelector('[data-results]');let bans=[];const formatDate=n=>n?new Intl.DateTimeFormat('cs-CZ',{day:'numeric',month:'numeric',year:'numeric'}).format(new Date(n)):'—';const draw=()=>{const q=search.value.trim().toLocaleLowerCase('cs'),list=bans.filter(b=>[b.name,b.reason,b.by].some(v=>String(v??'').toLocaleLowerCase('cs').includes(q)));count.textContent=`${list.length} z ${bans.length} záznamů`;body.innerHTML=list.length?list.map(b=>`<tr><td data-label="Hráč">${esc(b.name)}</td><td data-label="Důvod">${esc(b.reason||'Neuveden')}</td><td data-label="Uděleno" class="muted">${formatDate(b.time)}</td><td data-label="Admin" class="muted">${esc(b.by||'—')}</td><td data-label="Typ" class="muted">${b.ip?'IP ban':'Ban'}${b.permanent?' · permanentní':b.until>0?` · do ${formatDate(b.until)}`:''}</td><td data-label="Stav"><span class="state${b.active?'':' inactive'}">${b.active?'AKTIVNÍ':'UKONČENÝ'}</span></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Žádné odpovídající záznamy.</td></tr>'};search.addEventListener('input',draw);const githubPages=location.hostname.endsWith('github.io');const dataUrl=githubPages?assetUrl('banlist-preview.json'):'/banlist-data.php';fetch(dataUrl).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{if(!d.ok||!Array.isArray(d.bans))throw Error();bans=d.bans;document.querySelector('[data-active]').textContent=d.stats?.active_bans??bans.filter(b=>b.active).length;document.querySelector('[data-mutes]').textContent=d.stats?.active_mutes??0;document.querySelector('[data-total]').textContent=d.stats?.total_bans??bans.length;if(d.cached&&d.generated){const generated=new Date(d.generated);document.querySelector('[data-note]').textContent=`Banlist snapshot · ${new Intl.DateTimeFormat('cs-CZ',{dateStyle:'medium',timeStyle:'short'}).format(generated)}.`}draw()}).catch(()=>{body.innerHTML='<tr><td colspan="6" class="empty">Banlist se nepodařilo načíst.</td></tr>';count.textContent='Data nedostupná';document.querySelector('[data-note]').innerHTML=`<a href="https://mcnubaria.eu/banlist" target="_blank" rel="noreferrer">Otevřít živý banlist na mcnubaria.eu ↗</a>`})}
